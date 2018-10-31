@@ -13,6 +13,6 @@
 
 int main( void )
 {
-	puts("Nova izmena 1.\n"); /* prints  */
+	puts("Nova izmena 2 na 'tekuce'.\n"); /* prints  */
 	return EXIT_SUCCESS;
 }

@@ -1,14 +1,16 @@
 /*
  ============================================================================
  Name        : citizmdat.c
- Author      : Vasilije Blazeni
+ Author      : Vasilije Blaženi
  Version     :
  Copyright   : 
  Description : Hello World in C, Ansi-style
  ============================================================================
  */
 
-#define VERZIJA	"V0.1  28.09.2018."
+#define VERZIJA	"V0.2  01.11.2018."
+
+#define QNX 0	// 1 omogucuje kompajliranje naredaba specificnih za QNX
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,7 +23,7 @@ const char	POMOC[] =	/* Koristimo ovaj nacin da bi se mogao primeniti
 	"																				\n"
 	"   " VERZIJA "																	\n"
 	"																				\n"
-	" Program za citanje i/ili upis podataka u datoteku.							\n"
+	" Program za citanje i/ili izmenu podataka u datoteci.							\n"
 	" Autor: Aca Krinulovic															\n"
 	"																				\n"
 	" Poziv:																		\n"
@@ -118,6 +120,27 @@ const char	POMOC[] =	/* Koristimo ovaj nacin da bi se mogao primeniti
 	}
 
 
+unsigned char
+duz_tipa_pod( char format[] )
+{	// Podrazumeva se da je pri dodeli vrednosti nizu naredaba za one koje predstavljaju format ("%...") izvrsena provera i da su svi formati ispravni.
+	char	*p = format + 1;	// preskakanje '%' na pocetku specifikatora formata
+
+
+	if( strncmp( p, "hh", 2 ) == 0 )	/* %hhd, %hhu, %hho, %hhx, %hhX */
+		return sizeof( char );
+
+	if( *p == 'h' )	// %hd, %hu, %ho, %hx, %hX
+		return sizeof( short );
+
+	if( strchr( "duoxX", *p ) == 0 )	// %d, %u, %o, %x, %X
+		return sizeof( int );
+
+	if( strncmp( p + 1, "ld", 2 ) == 0 )
+		return sizeof( long );
+
+	errx( EXIT_FAILURE, "GRESKA: Nepostojeći specifikator formata %s\n", format );
+}
+
 int
 main( int argc, char *argv[] )
 {
@@ -199,6 +222,40 @@ main( int argc, char *argv[] )
 		{	// red s komentarom - preskace se
 			fgets( bafer, sizeof bafer, stdin );
 			continue;
+		}
+
+		if( bafer == '%')
+		{	// naredba za specifikaciju formata - vrsi se provera ispravnosti iste
+
+#include <regex.h>
+
+#if QNX == 0	// GNU/Linux
+	#include <sys/types.h>
+#endif
+
+#define BUFFER_SIZE 512
+
+
+char	*p = format, *pattern;
+
+	int		odziv;
+	regex_t	re_obj;
+	char buffer[BUFFER_SIZE];
+
+	if( ( odziv = regcomp( &re_obj, "%(((h{0,2})[duoxX])|(l|L)?f)", REG_NOSUB ) ) != 0 )
+	{
+		regerror( odziv, &re_obj, buffer, sizeof buffer );
+		fprintf( stderr,"grep: %s (%s)\n",buffer,pattern );
+		errx( EXIT_FAILURE, "regcomp( %s ): GRESKA: %s\n", pattern, buffer );
+	}
+
+if( regexec( &re_obj, buffer, 0, NULL, 0 ) == 0 ) {
+fputs( buffer, stdout );
+}
+
+regfree( &re_obj );
+
+
 		}
 
 		naredbe = ( char ** )realloc( naredbe, ++br_naredaba * sizeof( char * ) );

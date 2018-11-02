@@ -1,14 +1,16 @@
 /*
  ============================================================================
  Name        : citizmdat.c
- Author      : Vasilije Blazeni
+ Author      : Vasilije Blaženi
  Version     :
  Copyright   : 
  Description : Hello World in C, Ansi-style
  ============================================================================
  */
 
-#define VERZIJA	"V0.1  28.09.2018."
+#define VERZIJA	"V0.3  02.11.2018."
+
+#define _QNX 0	// 1 omogucuje kompajliranje naredaba specificnih za QNX
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,7 +23,7 @@ const char	POMOC[] =	/* Koristimo ovaj nacin da bi se mogao primeniti
 	"																				\n"
 	"   " VERZIJA "																	\n"
 	"																				\n"
-	" Program za citanje i/ili upis podataka u datoteku.							\n"
+	" Program za citanje i/ili izmenu podataka u datoteci.							\n"
 	" Autor: Aca Krinulovic															\n"
 	"																				\n"
 	" Poziv:																		\n"
@@ -65,7 +67,7 @@ const char	POMOC[] =	/* Koristimo ovaj nacin da bi se mogao primeniti
 	" dekadnog broja sa vodecim nulama, iza kojeg slede 2 tacke i razmak, a			\n"
 	" zatim podatak iz/za datoteku i u novom redu polozaj nakon pristupa datoteci	\n"
 	" -p  Pomeraj za zadatu vrednost, pri cemu oznacena vrednost predstavlja		\n"
-	"     relativni, neoznacena vrednost apsolutni pomeraj, a 'k' skok na kraj datoteke.	\n"
+	"     relativni, neoznacena vrednost apsolutni pomeraj, format duzinu odgovarajuceg a 'k' skok na kraj datoteke.	\n"
 	" [+|-]s   Smer citanja/upisa/brisanja/umetanja podatka (+/- - ka kraju/pocetku	\n"
 	"          datoteke). Podrazumevano je ka kraju datoteke.						\n"
 	" -u  Upis podataka u datoteku, uz prepisivanje postojecih.						\n"
@@ -74,8 +76,6 @@ const char	POMOC[] =	/* Koristimo ovaj nacin da bi se mogao primeniti
 	" FORMAT - kombinacija specifikacija formata konverzije biblioteckih			\n"
 	" funkcija printf() i scanf(), uz neke dodatne specifikacije:					\n"
 	"																				\n"
-	" '*' neposredno nakon znaka za oznacavanje pocetka specifikacije formata		\n"
-	"     oznacava preskakanje zadatog tipa podatka.								\n"
 	" %[*][hh|h|l|ll][douXx], gde je: hh - short short, h - short, nista -			\n"
 	" - osnovni tip, l - long, ll - long long, d - int, o - oktalno, u -			\n"
 	" - unsigned int i X/x - heksadecimalno (velika/mala slova pri upisu u			\n"
@@ -92,20 +92,22 @@ const char	POMOC[] =	/* Koristimo ovaj nacin da bi se mogao primeniti
 	" - desno/levo poravnanje pri ispisu, s - string (pri ucitavanju se				\n"
 	" dodaje '\0' na kraj)															\n"
 	"																				\n"
-	" %[l]T, gde je: nista/l - UTC/lokalno vreme tipa time_t u datoteci, a			\n"
-	" formata 'DD.MM.GGGG. cc:mm:ss' pri slanju na 'stdout'							\n"
+	" %[l]t, gde je: nista/l - UTC/lokalno vreme tipa time_t u datoteci, a			\n"
+	" formata 'DD.MM.GGGG. cc:mm:ss' pri citanju sa 'stdin' zadate vrednosti za upis\n"
+	" ili slanju ocitanje vrenosti na 'stdout'.										\n"
 	"																				\n"
 	" Primeri formata konverzija pri citanju/upisu/preskakanju/brisanju/			\n"
 	" umetanju podataka:															\n"
 	"																				\n"
-	" -c %*c 5 %f 1 %*d 2 (preskace 5 char, cita 1 float, preskace 2 int)			\n"
-	" %hhd %hd %d %ld %f %Lf %15s %c												\n"
+	" -c %c 5x -u %f 1 3.2 4.56 %d 2 (cita podatak tipa 'char' 5 puta, upisuje 3	\n"
+	"podatka tipa float, a zatim 1 podatak tipa int)								\n"
+	" -b %t 2x %hd 1x %f 3x %Lf5x %15s %c												\n"
 	" -u %hhd 10 67 %d 12345567 %ld 123456789 %f 23.45								\n"
 	" %f=3.4e11 %lf=2341234234.234234 %s=Ovo\\ je\\ primer %15s=primer				\n"
 	"  (float, string, desno poravnanje u polju sirine 15 karaktera, uz popunjavanje razmacima)\n"
 	" %10s=proba (levo poravnanje u polju sirine 10 karaktera, uz popunjavanje razmacima)\n"
 	" %*c %*f %*d (preskocen 1 char, 1 float, 1 int)\n"
-	" %-*f (1 broj tipa 'float' unazad)\n"
+	" %*f (1 broj tipa 'float')\n"
 	"																				\n";
 
 #define IF(TIP, FORMAT)											\
@@ -117,6 +119,41 @@ const char	POMOC[] =	/* Koristimo ovaj nacin da bi se mogao primeniti
 			&& sscanf( ++p, FORMAT, ( TIP * )pod ) == 1 );		\
 	}
 
+
+unsigned char
+duz_tipa_pod( char format[] )
+{	// Podrazumeva se da je pri dodeli vrednosti nizu naredaba za one koje predstavljaju format ("%...") izvrsena provera i da su svi formati ispravni.
+	static int	re_nepreveden = 1;
+
+	char	*p = format + 1,	// preskakanje '%' na pocetku specifikatora formata
+		obrazac[] = "%(((h{0,2})[duoxX])|(l|L)?f|[[:digit:]]c)";
+	regex_t	re_obj;
+char buffer[BUFFER_SIZE];
+
+	if( re_nepreveden )
+	{
+		if( ( re_nepreveden = regcomp( &re_obj, obrazac, REG_NOSUB ) ) != 0 )
+		{
+			regerror( re_nepreveden, &re_obj, buffer, sizeof buffer );
+			fprintf( stderr,"grep: %s (%s)\n", buffer, obrazac );
+			errx( EXIT_FAILURE, "regcomp( %s ): GRESKA: %s\n", obrazac, buffer );
+		}
+	}
+
+	if( strncmp( p, "hh", 2 ) == 0 )	/* %hhd, %hhu, %hho, %hhx, %hhX */
+		return sizeof( char );
+
+	if( *p == 'h' )	// %hd, %hu, %ho, %hx, %hX
+		return sizeof( short );
+
+	if( strchr( "duoxX", *p ) == 0 )	// %d, %u, %o, %x, %X
+		return sizeof( int );
+
+	if( strncmp( p + 1, "ld", 2 ) == 0 )
+		return sizeof( long );
+
+	errx( EXIT_FAILURE, "GRESKA: Nepostojeći specifikator formata %s\n", format );
+}
 
 int
 main( int argc, char *argv[] )
@@ -200,6 +237,27 @@ main( int argc, char *argv[] )
 			fgets( bafer, sizeof bafer, stdin );
 			continue;
 		}
+
+		if( bafer == '%')
+		{	// naredba za specifikaciju formata - vrsi se provera ispravnosti iste
+
+#include <regex.h>
+
+//#if _QNX == 0	// GNU/Linux
+//	#include <sys/types.h>
+//#endif
+
+#define BUFFER_SIZE 512
+
+
+
+	if( regexec( &re_obj, buffer, 0, NULL, 0 ) == 0 )
+	{
+		fputs( buffer, stdout );
+	}
+
+	regfree( &re_obj );
+
 
 		naredbe = ( char ** )realloc( naredbe, ++br_naredaba * sizeof( char * ) );
 		naredbe[ br_naredaba - 1 ] = strdup( bafer );

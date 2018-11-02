@@ -8,7 +8,7 @@
  ============================================================================
  */
 
-#define VERZIJA	"V0.3  02.11.2018."
+#define VERZIJA	"V0.4  02.11.2018."
 
 #define _QNX 0	// 1 omogucuje kompajliranje naredaba specificnih za QNX
 
@@ -123,22 +123,10 @@ const char	POMOC[] =	/* Koristimo ovaj nacin da bi se mogao primeniti
 unsigned char
 duz_tipa_pod( char format[] )
 {	// Podrazumeva se da je pri dodeli vrednosti nizu naredaba za one koje predstavljaju format ("%...") izvrsena provera i da su svi formati ispravni.
-	static int	re_nepreveden = 1;
 
 	char	*p = format + 1,	// preskakanje '%' na pocetku specifikatora formata
 		obrazac[] = "%(((h{0,2})[duoxX])|(l|L)?f|[[:digit:]]c)";
-	regex_t	re_obj;
-char buffer[BUFFER_SIZE];
 
-	if( re_nepreveden )
-	{
-		if( ( re_nepreveden = regcomp( &re_obj, obrazac, REG_NOSUB ) ) != 0 )
-		{
-			regerror( re_nepreveden, &re_obj, buffer, sizeof buffer );
-			fprintf( stderr,"grep: %s (%s)\n", buffer, obrazac );
-			errx( EXIT_FAILURE, "regcomp( %s ): GRESKA: %s\n", obrazac, buffer );
-		}
-	}
 
 	if( strncmp( p, "hh", 2 ) == 0 )	/* %hhd, %hhu, %hho, %hhx, %hhX */
 		return sizeof( char );
@@ -158,13 +146,15 @@ char buffer[BUFFER_SIZE];
 int
 main( int argc, char *argv[] )
 {
-	char 			bafer[ 300 ], format[ 20 ],*p, pod[ 100 ], **naredbe = NULL, *naredba,
-		*ime_dat, *odziv_charp, smer = 1, opsirno = 0, izvestaj = 0;
+	char 			bafer[ 300 ], format[ 20 ],*p, pod[ 100 ], **naredbe = NULL,
+		*naredba, *ime_dat, smer = 1, opsirno = 0, izvestaj = 0;
 	unsigned char	indeks_arg, obrada = 'c';
 	short			br_naredaba = 0, indeks_naredbe, brojac, br_citanja;
 	int				od_polozaja, odziv_int;
 	off_t 			pomeraj;
 	FILE			*program = NULL, *dat = NULL;
+	regex_t			re_obj;
+
 
 /* Izbaciti main()-argumente, jer ce se samo prikazivati uputstvo kad se program pozove
  * bez argumenata, a sve ostalo (osim imena datoteka) ce se zadavati u programu. */
@@ -229,6 +219,13 @@ main( int argc, char *argv[] )
 //	if( program == NULL )
 //		errx( EXIT_FAILURE, "GRESKA: Nije zadata programska datoteka\n" );
 
+
+	if( ( re_nepreveden = regcomp( &re_obj, obrazac, REG_NOSUB ) ) != 0 )
+	{
+		regerror( re_nepreveden, &re_obj, bafer, sizeof bafer );
+		errx( EXIT_FAILURE, "regcomp( %s ): GRESKA: %s\n", obrazac, bafer );
+	}
+
 	// ucitavanje naredaba iz programa u niz
 	while( scanf( "%s", bafer ) == 1 )
 	{
@@ -251,9 +248,9 @@ main( int argc, char *argv[] )
 
 
 
-	if( regexec( &re_obj, buffer, 0, NULL, 0 ) == 0 )
+	if( regexec( &re_obj, bafer, 0, NULL, 0 ) == 0 )
 	{
-		fputs( buffer, stdout );
+		fputs( bafer, stdout );
 	}
 
 	regfree( &re_obj );

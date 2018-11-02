@@ -8,7 +8,7 @@
  ============================================================================
  */
 
-#define VERZIJA	"V0.2  02.11.2018."
+#define VERZIJA	"V0.3  02.11.2018."
 
 #define _QNX 0	// 1 omogucuje kompajliranje naredaba specificnih za QNX
 

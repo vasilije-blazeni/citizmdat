@@ -8,7 +8,7 @@
  ============================================================================
  */
 
-#define VERZIJA	"V0.6   05.11.2018."
+#define VERZIJA	"V0.7   06.11.2018."
 
 #define _QNX 0	// 1 omogucuje kompajliranje naredaba specificnih za QNX
 
@@ -75,7 +75,8 @@ const char	POMOC[] =	/* Koristimo ovaj nacin da bi se mogao primeniti
 	"            FORMAT-a, dok pri upisivanju/umetanju predstavlja novu vrednost	\n"
 	"            polja tipa zadatog poslednjim specifikatorom FORMAT-a.				\n"
 	" -b  Brisanje zadatog tipa podatka (uz skracenje datoteke).					\n"
-	" -c  Citanje podataka iz datoteke.												\n"
+	" -c  Citanje podataka iz datoteke (podrazumevano ako se ne zada drugacija		\n"
+	"     obrada ako n).															\n"
 	" zatim podatak iz/za datoteku i u novom redu polozaj nakon pristupa datoteci	\n"
 	" (+|-)o   Ukljucenje/iskljucenje opsirnog prikaza podataka: polozaja u			\n"
 	"          datoteci u obliku 10-cifrenogd ekadnog broja sa vodecim nulama, iza	\n"
@@ -84,7 +85,7 @@ const char	POMOC[] =	/* Koristimo ovaj nacin da bi se mogao primeniti
 	" -p  Pomeraj za zadatu vrednost, pri cemu oznacena vrednost predstavlja		\n"
 	"     relativni, neoznacena vrednost apsolutni pomeraj, format duzinu odgovarajuceg a 'k' skok na kraj datoteke.	\n"
 	" [+|-]s   Smer citanja/upisa/brisanja/umetanja podatka (+/- - ka kraju/pocetku	\n"
-	"          datoteke). Podrazumevano je ka kraju datoteke.						\n"
+	"          datoteke). Podrazumevan je ka kraju datoteke.						\n"
 	" -u  Upis podataka u datoteku, uz prepisivanje postojecih.						\n"
 	" -U  Umetanje zadatog podatka (uz produzenje datoteke).						\n"
 	"																				\n"
@@ -139,21 +140,39 @@ unsigned char
 duz_tipa_pod( char format[] )
 {	// Podrazumeva se da je pri dodeli vrednosti nizu naredaba za one koje predstavljaju format ("%...") izvrsena provera i da su svi formati ispravni.
 	char	*p = format + 1;	// preskakanje '%' na pocetku specifikatora formata
+	short	br_kar;
 
 
-	if( strncmp( p, "hh", 2 ) == 0 )	/* %hhd, %hhu, %hho, %hhx, %hhX */
+	if( sscanf( p, "%hdc", &br_kar ) == 1 )	// %nc
+		return br_kar;
+
+	if( *p == 'c' || strncmp( p, "hh", 2 ) == 0 )	// p, %hhd, %hhu, %hho, %hhx, %hhX
 		return sizeof( char );
 
 	if( *p == 'h' )	// %hd, %hu, %ho, %hx, %hX
 		return sizeof( short );
 
-	if( strchr( "duoxX", *p ) == 0 )	// %d, %u, %o, %x, %X
+	if( strchr( "duoxX", *p ) != NULL )	// %d, %u, %o, %x, %X
 		return sizeof( int );
 
-	if( strncmp( p + 1, "ld", 2 ) == 0 )
+	if( strcmp( p, "ld" ) == 0 )
 		return sizeof( long );
 
-	errx( EXIT_FAILURE, "GRESKA: Nepostojeci specifikator formata %s\n", format );
+	if( *p == 'l' )	// %la, %lA, %le, %lE, %lf, %lF, %lg, %lG
+		return sizeof( float );
+
+	if( *p == 'l' )	// %lf
+		return sizeof( float );
+
+	if( strchr( "aAeEfFgG", *p ) != NULL )	// %a, %A, %e, %E, %f, %F, %g, %G
+
+		return sizeof( int );
+
+	if( *p == 'L' )	// %La, %LA, %Le, %LE, %Lf, %LF, %Lg, %LG
+		return sizeof( long double );
+
+	errx( EXIT_FAILURE, "%s(): GRESKA: Nepostojeci specifikator formata %s\n",
+		__func__, format );
 }
 
 
@@ -161,13 +180,13 @@ int
 main( int argc, char *argv[] )
 {
 	char 			bafer[ 300 ], format[ 20 ],*p, pod[ 100 ], **naredbe = NULL, *naredba,
-		*ime_dat, smer = 1, izvestaj = 0, obrazac[] =
+		*ime_dat, izvestaj = 0, obrazac[] =
     "%(((h{0,2})[duoxX])|(l|L)?f|[[:digit:]]c)";
-	unsigned char	indeks_arg, obrada = 'c';
+	unsigned char	indeks_arg;
 	short			br_naredaba = 0, indeks_naredbe, brojac, br_citanja;
 	int				od_polozaja, odziv_int;
 	off_t 			pomeraj;
-	FILE			*program = NULL, *dat = NULL;
+	FILE			*dat = NULL;
 	regex_t			re_obj;	/* NAPOMENA: greška koju prikazuje Eclipse IDE za
 		* ovaj tip podatka i funkcije za regularne izraze ne postoji, već je
 		* posledica greške u samom IDE-u. */
@@ -190,6 +209,12 @@ main( int argc, char *argv[] )
 			 * ili "|". */
 			case 'i':
 				izvestaj = 1;
+				fputs( "\nIzvrsava se: ", stderr );
+
+				for( indeks_arg = 0; indeks_arg < argc; indeks_arg++ )
+					fprintf( stderr, "%s ", argv[ indeks_arg ] );
+
+				fputs( "\n\n", stderr );
 				break;
 
 			case 'u':	case -1:
@@ -218,6 +243,9 @@ main( int argc, char *argv[] )
 		errx( EXIT_FAILURE, "regcomp( %s ): GRESKA: %s\n", obrazac, bafer );
 	}
 
+	if( izvestaj )
+		fputs( "Naredbe:\n", stderr );
+
 	/* Ucitavanje naredaba sopstvenog programa u niz, kako bi se mogao ponoviti
 	 * za sve zadate datoteke za obradu. */
 	while( scanf( "%s", bafer ) == 1 )
@@ -238,77 +266,73 @@ main( int argc, char *argv[] )
    		naredbe[ br_naredaba - 1 ] = strdup( bafer );
 
    		if( izvestaj )
-			fprintf( stderr, "Naredba [ %hd ]: \"%s\"\n", br_naredaba - 1, bafer );
+			fprintf( stderr, "%hd) %s\n", br_naredaba - 1, bafer );
 	}
-
-	/* Vracanje ulaza sa sopstvenog programa na stdin, radi omogucavanja
-	 * interakcije sa korisnikom: */
-	freopen( "/dev/stdin", "r", stdin );
 
 	for( indeks_arg = optind; indeks_arg < argc; indeks_arg++ )
 	{	// zadati program se vrsi za sve zadate datoteke
-		char  opsirno = 0, nacin_otvaranja[] = "r+";
+		char  nacin_otvaranja[] = "r+", obrada = 'c', smer = '+', opsirno = 0;
+			/* Za svaku novu datoteku 'obrada', 'smer' i 'opsirno' moraju imati
+			 * podrazumevane pocetne vrednosti. */
 
 		// Otvaranje datoteke za obradu:
 		while( ( dat = fopen( ime_dat = argv[ indeks_arg ], nacin_otvaranja ) ) == NULL )
 		{
-			warn( "UPOZORENJE: GRESKA pri otvaranju (%s) datoteke \"%s\"",
-				nacin_otvaranja, ime_dat );
-sleep( 3 );
-			if( errno == ENOENT )
-			{
-				char	odziv_char;
+			if( errno != ENOENT )
+				warn( "GRESKA pri otvaranju (%s) datoteke \"%s\"",
+					nacin_otvaranja, ime_dat );
 
-				fprintf( stderr, "Da li zelite da je kreirate (d/n)?\n" );
+			// ne postoji datoteka
+			strcpy( nacin_otvaranja, "w+" );
 
-				while( 1 )
-				{
-					odziv_int =  getchar() ;
-//printf( "odziv_int = %d (%c)\n", odziv_int, odziv_int );
-
-					if( odziv_int == EOF )
-						return EXIT_FAILURE;
-					if( odziv_int == 'd' )
-					{	// Obrazovace se nova datoteka.
-printf( "odziv_int = %d (%c)\n", odziv_int, odziv_int );
-						strcpy( nacin_otvaranja, "w+" );
-						break;	// izlazak iz unutrasnje while-petlje
-					}
-					else if( odziv_int == 'n' )
-						return EXIT_FAILURE;
-else
-printf( "odziv_int = %d (%c)\n", odziv_int, odziv_int );
-				}
-			}
-			else
-				return EXIT_FAILURE;
+			if( izvestaj )
+				fprintf( stderr, "Obrazovana nova datoteka\n" );
 		}
 
 		if( izvestaj )
-			fprintf( stderr, "\nObrada datoteke \"%s\":\n\n", ime_dat );
+			fprintf( stderr, "\nDatoteka \"%s\":\n\n", ime_dat );
 
 		for( indeks_naredbe = 0; indeks_naredbe < br_naredaba; indeks_naredbe++ )
 		{
 			naredba = naredbe[ indeks_naredbe ];
 
 			if( izvestaj )
-				fprintf( stderr, "Naredba \"%s\"\n", naredba );
+				fprintf( stderr, "   %hd) %s\n", indeks_naredbe, naredba );
 
-			if( strcmp( bafer, "-b" ) == 0 || strcmp( bafer, "-c" ) == 0 ||
-				strcmp( bafer, "-u" ) == 0 || strcmp( bafer, "-U" ) == 0 ||
-				strcmp( bafer, "-p" ) == 0)
+			if( strcmp( naredba, "-b" ) == 0 || strcmp( naredba, "-c" ) == 0 ||
+				strcmp( naredba, "-u" ) == 0 || strcmp( naredba, "-U" ) == 0 ||
+				strcmp( naredba, "-p" ) == 0 )
 			{	/* brisanje/citanje/upisivanje/umetanje podataka ili polozaj/
 				 * pomeraj */
-				obrada = bafer[ 1 ];
+				if( obrada == 'c' && smer == '+' )
+				{	/* Pri prelasku sa citanje na upisivanje ili obrnuto se mora
+					 * (prema literaturi za C), kao jedno od resenja, pozvati
+					 * donja funkcija. Ona se u ovom programu svuda poziva, osim
+					 * za slucaj u ovom uslovu. */
+					if( fseeko( dat, ( off_t )0, SEEK_CUR ) )
+						err( EXIT_FAILURE, "fseeko( %s ): GRESKA:", ime_dat );
+				}
+
+				obrada = naredba[ 1 ];
 			}
-			else if( bafer[ 0 ] == '%' )
-			{	// specifikacija formata podatka za citanje/upis/umetanje
-				strcpy( format, bafer );
+			else if( strcmp( naredba, "+s" ) == 0 )	// smer ka kraju datoteke
+				smer = '+';
+			else if( strcmp( naredba, "-s" ) == 0 )	// smer ka početku datoteke
+				smer = '-';
+			else if( naredba[ 0 ] == '%' )
+			{	// specifikacija formata podatka za čitanje/upis/umetanje
+				strcpy( format, naredba );
 			}
-			else if( strcmp( bafer, "+o" ) == 0 )
+			else if( strcmp( naredba, "+o" ) == 0 )
 				opsirno = 1;
-			else if( strcmp( bafer, "-o" ) == 0 )
+			else if( strcmp( naredba, "-o" ) == 0 )
 				opsirno = 0;
+
+			/* VAZNA NAPOMENA:
+			 * Uslovi za detekciju opcija sopstvenog programa i specifikatora
+			 * formata moraju biti gore, jer algoritam podrazumeva da se dole
+			 * vrsi obrada datoteke. */
+
 			else if( obrada == 'c' )
 			{	// citanje
 				br_citanja = atoi( naredba );
@@ -332,15 +356,111 @@ printf( "odziv_int = %d (%c)\n", odziv_int, odziv_int );
 					puts( "\n" );
 				}
 
+				if( smer == '+' )
+					;
+
 				break;
 			}
 			else if( obrada == 'u' )
 			{	// upisivanje
+				if( izvestaj )
+					fprintf( stderr, "-%c %cs %s %s\n", obrada, smer, format, naredba );
 
+				if( strcmp( format, "%c" ) == 0 )
+				{
+					sscanf( naredba, format, ( char * )pod );
+
+					if( smer == '-' && !fseeko( dat, -sizeof( char ), SEEK_CUR ) )
+						err( EXIT_FAILURE, "fseeko( %s -%c %cs %s %s ): GRESKA:",
+							ime_dat, obrada, smer, format, naredba );
+							// pomeraj ka pocetku datoteke
+
+					if( fwrite( pod, duz_tipa_pod( format ), 1, dat ) != 1 )
+						err( EXIT_FAILURE, "fseeko( %s -%c %cs %s %s ): GRESKA:",
+							ime_dat, obrada, smer, format, naredba );
+
+					if( smer == '-' && !fseeko( dat, -sizeof( char ), SEEK_CUR ) )
+						err( EXIT_FAILURE, "fseeko( %s -%c %cs %s %s ): GRESKA:",
+							ime_dat, obrada, smer, format, naredba );
+							// pomeraj ka pocetku datoteke
+				}
+				else if( strcmp( format, "%hhu" ) == 0 )
+				{
+					sscanf( naredba, format, ( unsigned char * )pod );
+
+					if( fwrite( pod, duz_tipa_pod( format ), 1, dat ) != 1 )
+						err( EXIT_FAILURE, "fwrite( %s %s %s ): GRESKA:\n",
+							ime_dat, format, naredba );
+				}
+				else if( strcmp( format, "%hd" ) == 0 )
+				{
+					sscanf( naredba, format, ( short * )pod );
+
+					if( fwrite( pod, duz_tipa_pod( format ), 1, dat ) != 1 )
+						err( EXIT_FAILURE, "fwrite( %s %s %s ): GRESKA:\n",
+							ime_dat, format, naredba );
+				}
+				else if( strcmp( format, "%hu" ) == 0 )
+				{
+					sscanf( naredba, format, ( unsigned short * )pod );
+
+					if( fwrite( pod, duz_tipa_pod( format ), 1, dat ) != 1 )
+						err( EXIT_FAILURE, "fwrite( %s %s %s ): GRESKA:\n",
+							ime_dat, format, naredba );
+				}
+				else if( strcmp( format, "%d" ) == 0 )
+				{
+					sscanf( naredba, format, ( int * )pod );
+
+					if( fwrite( pod, duz_tipa_pod( format ), 1, dat ) != 1 )
+						err( EXIT_FAILURE, "fwrite( %s %s %s ): GRESKA:\n",
+							ime_dat, format, naredba );
+				}
+				else if( strcmp( format, "%u" ) == 0 )
+				{
+					sscanf( naredba, format, ( unsigned * )pod );
+
+					if( fwrite( pod, duz_tipa_pod( format ), 1, dat ) != 1 )
+						err( EXIT_FAILURE, "fwrite( %s %s %s ): GRESKA:\n",
+							ime_dat, format, naredba );
+				}
+				else if( strcmp( format, "%ld" ) == 0 )
+				{
+					sscanf( naredba, format, ( long * )pod );
+
+					if( fwrite( pod, duz_tipa_pod( format ), 1, dat ) != 1 )
+						err( EXIT_FAILURE, "fwrite( %s %s %s ): GRESKA:\n",
+							ime_dat, format, naredba );
+				}
+				else if( strcmp( format, "%f" ) == 0 )
+				{
+					sscanf( naredba, format, ( float * )pod );
+
+					if( fwrite( pod, duz_tipa_pod( format ), 1, dat ) != 1 )
+						err( EXIT_FAILURE, "fwrite( %s %s %s ): GRESKA:\n",
+							ime_dat, format, naredba );
+				}
+				else if( strcmp( format, "%lf" ) == 0 )
+				{
+fprintf( stderr, "format %s, broj %lf\n", format, ( double * )pod );
+					sscanf( naredba, format, ( double * )pod );
+
+					if( fwrite( pod, duz_tipa_pod( format ), 1, dat ) != 1 )
+						err( EXIT_FAILURE, "fwrite( %s %s %s ): GRESKA:\n",
+							ime_dat, format, naredba );
+				}
+				else if( strcmp( format, "%Lf" ) == 0 )
+				{
+					sscanf( naredba, format, ( long double * )pod );
+
+					if( fwrite( pod, duz_tipa_pod( format ), 1, dat ) != 1 )
+						err( EXIT_FAILURE, "fwrite( %s %s %s ): GRESKA:\n",
+							ime_dat, format, naredba );
+				}
 			}
-			else if( strcmp( bafer, "?" ) == 0 )
+			else if( strcmp( naredba, "?" ) == 0 )
 			{
-				if( smer > 0 )
+				if( smer == '+' )
 					;	// fseek() za duzinu podatka ka pocetku datoteke
 
 				switch( obrada )
@@ -356,10 +476,10 @@ printf( "odziv_int = %d (%c)\n", odziv_int, odziv_int );
 						break;
 				}
 			}
-			else if( sscanf( bafer, format, ( double * )pod ) == 1 )
+			else if( sscanf( naredba, format, ( double * )pod ) == 1 )
 			{
 	printf( "ucitan double '%lf'\n", *( double * )pod );
-				if( smer > 0 )
+				if( smer == '+' )
 					;	// fseek() za duzinu podatka ka pocetku datoteke
 
 				if( obrada == 'u' )
@@ -457,7 +577,7 @@ continue;	// privemeno, dok se ne izbaci sve ispod
 				od_polozaja = SEEK_SET;
 			}
 
-			if( ftello( dat ) == -1L )
+			if( ftello( dat ) == ( off_t )-1 )
 				err( EXIT_FAILURE, "ftello( %s )", ime_dat );
 
 			if( fseeko( dat, pomeraj, od_polozaja ) == -1 )
@@ -468,10 +588,9 @@ continue;	// privemeno, dok se ne izbaci sve ispod
 //		else
 //			errx( EXIT_FAILURE, "fopen( %s ): pogresan argument", arg );
 
+		fclose( dat );
 	}
 
 	regfree( &re_obj );
-    fclose( program );
-	fclose( dat );
 	return EXIT_SUCCESS;
 }
